@@ -8,14 +8,60 @@
 // 30+). When the web app calls getDisplayMedia (see SystemAudioSource), we hand
 // it loopback audio directly — no picker, no screen actually used. On macOS this
 // relies on Screen Recording permission (ScreenCaptureKit under the hood).
-const { app, BrowserWindow, session, desktopCapturer, shell, ipcMain, screen } = require('electron')
+const { app, BrowserWindow, session, desktopCapturer, shell, ipcMain, screen, Notification } = require('electron')
 const path = require('path')
 
-// System-facing app name (menu bar, About, userData path).
 app.setName('Poyse AI')
 
 let mainWin = null
 let overlayWin = null
+
+// --- Granola-style meeting auto-detect ---------------------------------------
+// Poll open window titles for an in-progress call (Zoom/Meet/Teams). When one
+// starts, surface Poyse on the live-meeting page so the operator can start the
+// copilot without hunting for the app. Uses desktopCapturer window names, which
+// need the Screen Recording permission we already require for system audio.
+let meetingActive = false
+let watchTimer = null
+const MEETING_WINDOW_PATTERNS = [
+  /zoom meeting/i,                 // Zoom's in-call window (the idle app window is just "Zoom")
+  /google meet|meet\s*[–-]\s/i,    // Google Meet call tab
+  /teams meeting|microsoft teams.*\bmeeting\b/i, // Teams call (best-effort)
+]
+
+async function detectMeeting() {
+  let sources
+  try {
+    sources = await desktopCapturer.getSources({ types: ['window'], thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false })
+  } catch {
+    return // no Screen Recording permission yet, or transient failure
+  }
+  const inMeeting = sources.some((s) => MEETING_WINDOW_PATTERNS.some((re) => re.test(s.name || '')))
+  if (inMeeting && !meetingActive) {
+    meetingActive = true
+    onMeetingStarted()
+  } else if (!inMeeting && meetingActive) {
+    meetingActive = false
+  }
+}
+
+function onMeetingStarted() {
+  if (!mainWin || mainWin.isDestroyed()) createWindow()
+  mainWin.show()
+  mainWin.focus()
+  mainWin.loadURL(`${APP_URL}/meeting`)
+  try {
+    const n = new Notification({ title: 'Poyse AI', body: 'Meeting detected — open your copilot.' })
+    n.on('click', () => { mainWin?.show(); mainWin?.focus() })
+    n.show()
+  } catch { /* notifications optional */ }
+}
+
+function startMeetingWatch() {
+  if (watchTimer) return
+  void detectMeeting()
+  watchTimer = setInterval(() => void detectMeeting(), 7000)
+}
 
 // Persistent partition for the embedded meeting <webview> (Meet/Zoom/Teams).
 // Isolated from the Poyse app session so cookies/logins don't mix, but persistent
@@ -66,8 +112,6 @@ function createWindow() {
 
   mainWin = win
   win.on('closed', () => { if (mainWin === win) mainWin = null })
-  // Load the sign-in entry: shows login when signed out, redirects to the app when
-  // signed in. The marketing landing (download-focused) is the browser experience.
   win.loadURL(`${APP_URL}/signin`)
 }
 
@@ -127,6 +171,7 @@ app.on('web-contents-created', (_e, contents) => {
 
 app.whenReady().then(() => {
   createWindow()
+  startMeetingWatch()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
