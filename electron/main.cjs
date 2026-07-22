@@ -213,9 +213,8 @@ app.on('web-contents-created', (_e, contents) => {
 app.whenReady().then(() => {
   const launchedAtLogin = (() => { try { return app.getLoginItemSettings().wasOpenedAtLogin } catch { return false } })()
   createTray()
-  // Default to launching at login so the background meeting-watcher is always on
-  // (Granola-style). Users can turn it off from the tray menu.
-  if (!isOpenAtLogin()) setOpenAtLogin(true)
+  // Start-at-login is OPT-IN: off by default, the user enables it from the tray
+  // ("Start at login") when they want the background meeting-watcher always on.
   createWindow()
   // If macOS auto-started us at login, stay in the background (tray only).
   if (launchedAtLogin && mainWin) mainWin.hide()
