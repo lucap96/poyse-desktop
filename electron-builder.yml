@@ -13,6 +13,7 @@ publish:
   owner: lucap96
   repo: poyse-desktop
   releaseType: release
+afterPack: ./afterPack.cjs
 mac:
   target: dmg
   icon: build/icon.png
