@@ -8,13 +8,17 @@
 // 30+). When the web app calls getDisplayMedia (see SystemAudioSource), we hand
 // it loopback audio directly — no picker, no screen actually used. On macOS this
 // relies on Screen Recording permission (ScreenCaptureKit under the hood).
-const { app, BrowserWindow, session, desktopCapturer, shell, ipcMain, screen, Notification } = require('electron')
+const { app, BrowserWindow, session, desktopCapturer, shell, ipcMain, screen, Notification, Tray, Menu, nativeImage } = require('electron')
 const path = require('path')
 
 app.setName('Poyse AI')
 
 let mainWin = null
 let overlayWin = null
+let tray = null
+// Set true only when the user really wants to quit (tray → Quit); otherwise
+// closing the window just hides it so Poyse keeps watching for meetings.
+app.isQuitting = false
 
 // --- Granola-style meeting auto-detect ---------------------------------------
 // Poll open window titles for an in-progress call (Zoom/Meet/Teams). When one
@@ -61,6 +65,38 @@ function startMeetingWatch() {
   if (watchTimer) return
   void detectMeeting()
   watchTimer = setInterval(() => void detectMeeting(), 7000)
+}
+
+// --- Tray / menubar + start-at-login -----------------------------------------
+function showMainWindow() {
+  if (!mainWin || mainWin.isDestroyed()) createWindow()
+  mainWin.show()
+  mainWin.focus()
+}
+function isOpenAtLogin() {
+  try { return app.getLoginItemSettings().openAtLogin } catch { return false }
+}
+function setOpenAtLogin(v) {
+  try { app.setLoginItemSettings({ openAtLogin: v, openAsHidden: true }) } catch { /* ignore */ }
+  refreshTrayMenu()
+}
+function refreshTrayMenu() {
+  if (!tray) return
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Open Poyse AI', click: showMainWindow },
+    { type: 'checkbox', label: 'Start at login', checked: isOpenAtLogin(), click: (item) => setOpenAtLogin(item.checked) },
+    { type: 'separator' },
+    { label: 'Quit Poyse AI', click: () => { app.isQuitting = true; app.quit() } },
+  ]))
+}
+function createTray() {
+  if (tray) return
+  let img = nativeImage.createFromPath(path.join(__dirname, 'tray.png'))
+  if (process.platform === 'darwin' && !img.isEmpty()) img = img.resize({ width: 18, height: 18 })
+  tray = new Tray(img)
+  tray.setToolTip('Poyse AI')
+  tray.on('click', showMainWindow)
+  refreshTrayMenu()
 }
 
 // Persistent partition for the embedded meeting <webview> (Meet/Zoom/Teams).
@@ -111,6 +147,11 @@ function createWindow() {
   })
 
   mainWin = win
+  // Closing the window hides it (keep running in the tray + meeting watcher);
+  // only a real Quit (tray → Quit) actually closes it.
+  win.on('close', (e) => {
+    if (!app.isQuitting) { e.preventDefault(); win.hide() }
+  })
   win.on('closed', () => { if (mainWin === win) mainWin = null })
   win.loadURL(`${APP_URL}/signin`)
 }
@@ -170,13 +211,20 @@ app.on('web-contents-created', (_e, contents) => {
 })
 
 app.whenReady().then(() => {
+  const launchedAtLogin = (() => { try { return app.getLoginItemSettings().wasOpenedAtLogin } catch { return false } })()
+  createTray()
+  // Default to launching at login so the background meeting-watcher is always on
+  // (Granola-style). Users can turn it off from the tray menu.
+  if (!isOpenAtLogin()) setOpenAtLogin(true)
   createWindow()
+  // If macOS auto-started us at login, stay in the background (tray only).
+  if (launchedAtLogin && mainWin) mainWin.hide()
   startMeetingWatch()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
+  app.on('activate', () => { showMainWindow() })
 })
 
+// Keep running in the tray when the window is closed/hidden. Real exit is via
+// the tray's Quit (which sets app.isQuitting and calls app.quit()).
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  // no-op: the tray keeps Poyse alive to watch for meetings
 })
