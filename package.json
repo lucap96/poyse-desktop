@@ -1,0 +1,16 @@
+{
+  "name": "poyse-desktop",
+  "productName": "Poyse AI",
+  "version": "0.1.0",
+  "description": "Poyse AI desktop app — a thin Electron shell that loads the Poyse web app and adds system-audio capture, an embedded meeting webview, and a floating focus-mode overlay.",
+  "author": "Poyse AI",
+  "license": "UNLICENSED",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "build": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3"
+  }
+}

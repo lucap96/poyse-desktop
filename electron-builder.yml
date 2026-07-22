@@ -1,0 +1,23 @@
+# Packaging config for the Poyse AI desktop shell. The app loads the deployed
+# web app over the network, so only the Electron shell files need bundling.
+# Built and published by GitHub Actions (.github/workflows/release.yml).
+appId: ai.poyse.desktop
+productName: Poyse AI
+directories:
+  output: release
+files:
+  - electron/**/*
+  - package.json
+publish:
+  provider: github
+  owner: lucap96
+  repo: poyse-desktop
+  releaseType: release
+mac:
+  target: dmg
+  artifactName: Poyse-AI-mac-${arch}.${ext}
+  category: public.app-category.productivity
+win:
+  target:
+    - zip
+  artifactName: Poyse-AI-win-${arch}.${ext}
