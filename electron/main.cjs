@@ -11,6 +11,9 @@
 const { app, BrowserWindow, session, desktopCapturer, shell, ipcMain, screen } = require('electron')
 const path = require('path')
 
+// System-facing app name (menu bar, About, userData path).
+app.setName('Poyse AI')
+
 let mainWin = null
 let overlayWin = null
 

@@ -15,9 +15,11 @@ publish:
   releaseType: release
 mac:
   target: dmg
+  icon: build/icon.png
   artifactName: Poyse-AI-mac-${arch}.${ext}
   category: public.app-category.productivity
 win:
+  icon: build/icon.png
   target:
     - zip
   artifactName: Poyse-AI-win-${arch}.${ext}
