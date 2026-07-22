@@ -66,7 +66,9 @@ function createWindow() {
 
   mainWin = win
   win.on('closed', () => { if (mainWin === win) mainWin = null })
-  win.loadURL(APP_URL)
+  // Load the sign-in entry: shows login when signed out, redirects to the app when
+  // signed in. The marketing landing (download-focused) is the browser experience.
+  win.loadURL(`${APP_URL}/signin`)
 }
 
 // Granola-style in-call overlay: a small, frameless, always-on-top companion
