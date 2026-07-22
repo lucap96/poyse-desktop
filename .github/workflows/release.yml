@@ -33,10 +33,11 @@ jobs:
         run: npx electron-builder ${{ matrix.args }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS Developer ID signing + notarization (set these secrets to ship
-          # notarized, prompt-free builds; empty → ad-hoc build with a one-time prompt).
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # To ship notarized, prompt-free macOS builds, add these repo secrets and
+          # UNCOMMENT the lines below (an EMPTY CSC_LINK breaks electron-builder, so
+          # only add them once the secrets actually exist):
+          #   CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          #   CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          #   APPLE_ID: ${{ secrets.APPLE_ID }}
+          #   APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          #   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
