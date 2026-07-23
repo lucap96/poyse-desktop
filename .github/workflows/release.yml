@@ -4,21 +4,45 @@ name: release
 # publishes them to a GitHub Release — so the ~290 MB of binaries upload from
 # GitHub's network, not a local connection.
 #
-# Runs AUTOMATICALLY on every push to main: each run stamps a unique version
-# (0.1.<run_number>) so electron-builder always creates a FRESH release. This
-# sidesteps electron-builder's guard that refuses to overwrite the assets of a
-# release published more than 2 hours ago — the reason older builds silently
-# "succeeded" without ever updating the download.
+# Runs AUTOMATICALLY on every push to main. A `prepare` job creates the release
+# ONCE (unique version 0.1.<run_number>), then the mac + win build jobs upload
+# their assets to that existing release. Creating the release up front avoids the
+# race where both matrix jobs try to create the same release in parallel and one
+# fails with "422 Published releases must have a valid tag". The unique version
+# also sidesteps electron-builder's guard against overwriting a release published
+# more than 2 hours ago.
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "version=0.1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+      # Create the tag + release now, so both build jobs find it and only upload.
+      # --target pins the tag to this commit; retype to release (not draft) so it
+      # becomes "latest" once assets land.
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v0.1.${{ github.run_number }}" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "v0.1.${{ github.run_number }}" \
+            --notes "Automated build from ${{ github.sha }}"
+
   build:
+    needs: prepare
     permissions:
       contents: write
     strategy:
@@ -35,12 +59,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      # Unique, monotonically-increasing version per run → a fresh GitHub release
-      # every time (no 2-hour overwrite guard). Both matrix jobs share the same
-      # run_number, so mac + win publish to the SAME release. --allow-same-version
-      # keeps a re-run of the same run_number from failing.
+      # Match package.json to the release version electron-builder will target.
       - name: Stamp version
-        run: npm version "0.1.${{ github.run_number }}" --no-git-tag-version --allow-same-version
+        run: npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version --allow-same-version
       - run: npm install
       - name: Build and publish
         run: npx electron-builder ${{ matrix.args }} --publish always
