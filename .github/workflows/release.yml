@@ -2,11 +2,18 @@ name: release
 
 # Builds the macOS (.dmg) and Windows (.zip) apps on GitHub's runners and
 # publishes them to a GitHub Release — so the ~290 MB of binaries upload from
-# GitHub's network, not a local connection. Run manually (Actions → release →
-# Run workflow) or by pushing a v* tag.
+# GitHub's network, not a local connection.
+#
+# Runs AUTOMATICALLY on every push to main: each run stamps a unique version
+# (0.1.<run_number>) so electron-builder always creates a FRESH release. This
+# sidesteps electron-builder's guard that refuses to overwrite the assets of a
+# release published more than 2 hours ago — the reason older builds silently
+# "succeeded" without ever updating the download.
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
 
@@ -28,6 +35,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      # Unique, monotonically-increasing version per run → a fresh GitHub release
+      # every time (no 2-hour overwrite guard). Both matrix jobs share the same
+      # run_number, so mac + win publish to the SAME release. --allow-same-version
+      # keeps a re-run of the same run_number from failing.
+      - name: Stamp version
+        run: npm version "0.1.${{ github.run_number }}" --no-git-tag-version --allow-same-version
       - run: npm install
       - name: Build and publish
         run: npx electron-builder ${{ matrix.args }} --publish always
