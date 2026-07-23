@@ -192,6 +192,10 @@ function openOverlay(meetingId) {
   overlayWin.loadURL(`${APP_URL}/overlay/${meetingId}`)
 }
 
+ipcMain.handle('shell:openExternal', (_e, url) => {
+  const u = String(url)
+  if (/^https?:\/\//i.test(u)) return shell.openExternal(u)
+})
 ipcMain.handle('overlay:open', (_e, meetingId) => { openOverlay(String(meetingId)) })
 ipcMain.on('overlay:close', () => { if (overlayWin && !overlayWin.isDestroyed()) overlayWin.close() })
 ipcMain.on('app:expand', () => {

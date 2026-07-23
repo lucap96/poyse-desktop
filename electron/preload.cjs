@@ -10,4 +10,7 @@ contextBridge.exposeInMainWorld('poyse', {
   openOverlay: (meetingId) => ipcRenderer.invoke('overlay:open', meetingId),
   closeOverlay: () => ipcRenderer.send('overlay:close'),
   expand: () => ipcRenderer.send('app:expand'),
+  // Open a URL in the user's real browser — used for OAuth (calendar/connectors)
+  // so the flow isn't trapped in an app window with no way back.
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 })
