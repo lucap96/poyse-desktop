@@ -20,7 +20,7 @@ protocols:
 afterPack: ./afterPack.cjs
 mac:
   target: dmg
-  icon: build/icon.png
+  icon: build/icon.icns
   artifactName: Poyse-AI-mac-${arch}.${ext}
   category: public.app-category.productivity
 win:
