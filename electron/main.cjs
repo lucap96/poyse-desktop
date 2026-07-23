@@ -52,6 +52,16 @@ if (!app.requestSingleInstanceLock()) {
   })
 }
 app.on('open-url', (_e, url) => handleDeepLink(url))
+// Windows cold start: if the poyse:// link launched THIS (first) instance, the
+// link is in our own argv — `second-instance` only covers the warm-app case.
+// handleDeepLink buffers into pendingAuthTokens until the window loads.
+{
+  const coldLink = process.argv.find((a) => typeof a === 'string' && a.startsWith('poyse://'))
+  if (coldLink) handleDeepLink(coldLink)
+}
+// Cmd+Q / Dock-Quit must actually quit: win.on('close') hides to tray unless
+// app.isQuitting, which only the tray's Quit set — mark it on ANY quit intent.
+app.on('before-quit', () => { app.isQuitting = true })
 
 // --- Granola-style meeting auto-detect ---------------------------------------
 // Poll open window titles for an in-progress call (Zoom/Meet/Teams). When one
@@ -59,6 +69,7 @@ app.on('open-url', (_e, url) => handleDeepLink(url))
 // copilot without hunting for the app. Uses desktopCapturer window names, which
 // need the Screen Recording permission we already require for system audio.
 let meetingActive = false
+let meetingMisses = 0
 let watchTimer = null
 const MEETING_WINDOW_PATTERNS = [
   /zoom meeting/i,                 // Zoom's in-call window (the idle app window is just "Zoom")
@@ -74,11 +85,21 @@ async function detectMeeting() {
     return // no Screen Recording permission yet, or transient failure
   }
   const inMeeting = sources.some((s) => MEETING_WINDOW_PATTERNS.some((re) => re.test(s.name || '')))
-  if (inMeeting && !meetingActive) {
-    meetingActive = true
-    onMeetingStarted()
-  } else if (!inMeeting && meetingActive) {
-    meetingActive = false
+  if (inMeeting) {
+    meetingMisses = 0
+    if (!meetingActive) {
+      meetingActive = true
+      onMeetingStarted()
+    }
+  } else if (meetingActive) {
+    // Zoom's window title stops matching when the call is minimized to its
+    // floating panel — require consecutive misses before declaring the meeting
+    // over, so minimize/restore can't retrigger onMeetingStarted mid-call.
+    meetingMisses += 1
+    if (meetingMisses >= 3) {
+      meetingActive = false
+      meetingMisses = 0
+    }
   }
 }
 
@@ -86,7 +107,10 @@ function onMeetingStarted() {
   if (!mainWin || mainWin.isDestroyed()) createWindow()
   mainWin.show()
   mainWin.focus()
-  mainWin.loadURL(`${APP_URL}/meeting`)
+  // Never reload when already on the live-meeting surface — loadURL is a full
+  // SPA reload that would kill an in-progress system-audio capture.
+  const cur = (() => { try { return mainWin.webContents.getURL() } catch { return '' } })()
+  if (!cur.startsWith(`${APP_URL}/meeting`)) mainWin.loadURL(`${APP_URL}/meeting`)
   try {
     const n = new Notification({ title: 'Poyse AI', body: 'Meeting detected — open your copilot.' })
     n.on('click', () => { mainWin?.show(); mainWin?.focus() })
@@ -240,10 +264,12 @@ ipcMain.on('app:expand', () => {
   if (mainWin && !mainWin.isDestroyed()) { mainWin.show(); mainWin.focus() }
 })
 
-// Popups from the embedded meeting (SSO, "open in app" prompts) → open in the
-// user's real browser rather than a bare, chromeless Electron window.
+// Popups from the embedded meeting (SSO, "open in app" prompts) AND any
+// window.open/target=_blank from the app's own windows → open in the user's
+// real browser rather than a bare, chromeless Electron window.
 app.on('web-contents-created', (_e, contents) => {
-  if (contents.getType() === 'webview') {
+  const type = contents.getType()
+  if (type === 'webview' || type === 'window') {
     contents.setWindowOpenHandler(({ url }) => {
       if (/^https?:/.test(url)) void shell.openExternal(url)
       return { action: 'deny' }

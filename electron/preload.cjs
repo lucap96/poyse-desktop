@@ -9,8 +9,11 @@ const { contextBridge, ipcRenderer } = require('electron')
 let bufferedTokens = null
 const authCallbacks = []
 ipcRenderer.on('poyse:auth-tokens', (_e, tokens) => {
-  bufferedTokens = tokens
-  for (const cb of authCallbacks) cb(tokens)
+  if (authCallbacks.length) {
+    for (const cb of authCallbacks) cb(tokens)
+  } else {
+    bufferedTokens = tokens // no listener yet → replay on registration
+  }
 })
 
 contextBridge.exposeInMainWorld('poyse', {
@@ -27,6 +30,12 @@ contextBridge.exposeInMainWorld('poyse', {
   // poyse:// deep link. Replays any token buffered before registration.
   onAuthTokens: (cb) => {
     authCallbacks.push(cb)
-    if (bufferedTokens) cb(bufferedTokens)
+    // Deliver-once: clear after replay so a React remount (e.g. StrictMode
+    // double-mount) doesn't re-fire stale tokens into setSession.
+    if (bufferedTokens) {
+      const t = bufferedTokens
+      bufferedTokens = null
+      cb(t)
+    }
   },
 })

@@ -34,11 +34,15 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Idempotent: a workflow RE-run reuses the same run_number, so the tag
+        # may already exist — view-before-create keeps the re-run green.
         run: |
-          gh release create "v0.1.${{ github.run_number }}" \
+          TAG="v0.1.${{ github.run_number }}"
+          gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
+          gh release create "$TAG" \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
-            --title "v0.1.${{ github.run_number }}" \
+            --title "$TAG" \
             --notes "Automated build from ${{ github.sha }}"
 
   build:
