@@ -20,6 +20,39 @@ let tray = null
 // closing the window just hides it so Poyse keeps watching for meetings.
 app.isQuitting = false
 
+// --- Desktop OAuth return: poyse://auth?a=<access>&r=<refresh> deep link -------
+app.setAsDefaultProtocolClient('poyse')
+let pendingAuthTokens = null
+function handleDeepLink(url) {
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'poyse:') return
+    const access_token = u.searchParams.get('a')
+    const refresh_token = u.searchParams.get('r')
+    if (!access_token || !refresh_token) return
+    const tokens = { access_token, refresh_token }
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.show()
+      mainWin.focus()
+      mainWin.webContents.send('poyse:auth-tokens', tokens)
+    } else {
+      pendingAuthTokens = tokens // window not ready yet → flush on load
+    }
+  } catch { /* ignore malformed link */ }
+}
+// Single-instance: the OS opening the poyse:// link launches a second instance
+// (Windows/Linux) whose argv we route into the running app; macOS uses open-url.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', (_e, argv) => {
+    const link = argv.find((a) => typeof a === 'string' && a.startsWith('poyse://'))
+    if (link) handleDeepLink(link)
+    if (mainWin && !mainWin.isDestroyed()) { mainWin.show(); mainWin.focus() }
+  })
+}
+app.on('open-url', (_e, url) => handleDeepLink(url))
+
 // --- Granola-style meeting auto-detect ---------------------------------------
 // Poll open window titles for an in-progress call (Zoom/Meet/Teams). When one
 // starts, surface Poyse on the live-meeting page so the operator can start the
@@ -153,6 +186,10 @@ function createWindow() {
     if (!app.isQuitting) { e.preventDefault(); win.hide() }
   })
   win.on('closed', () => { if (mainWin === win) mainWin = null })
+  // If an OAuth deep link arrived before the window was ready, deliver it now.
+  win.webContents.on('did-finish-load', () => {
+    if (pendingAuthTokens) { win.webContents.send('poyse:auth-tokens', pendingAuthTokens); pendingAuthTokens = null }
+  })
   win.loadURL(`${APP_URL}/signin`)
 }
 
